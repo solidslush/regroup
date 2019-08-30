@@ -243,11 +243,11 @@ class DAWG:
         return top
 
     def serialize(self):
-        return DAWG.serialize_regex(self.dawg)
+        return str(DAWG.serialize_regex(self.dawg))
 
     @classmethod
     def _serialize(cls, dawg):
-        return cls.serialize_regex(dawg)
+        return str(cls.serialize_regex(dawg))
 
     @classmethod
     def serialize_regex(cls, d, level=0):
