@@ -46,9 +46,28 @@ class TaggedString:
         return repr(self.tagged)
 
 
-def escape(s):
+def raw_escape(s):
     # don't escape space; why would you do that?
     return re.escape(s).replace(r'\ ', ' ')
+
+def escape(s):
+    return EscapedString.escape(s)
+
+class EscapedString(str):
+    def __add__(self, other):
+        if isinstance(other, self.__class__):
+            return EscapedString(super().__add__(other))
+        else:
+            return EscapedString(super().__add__(EscapedString.escape(other)))
+
+    @classmethod
+    def escape(cls, s):
+        if isinstance(s, cls):
+            return s
+        else:
+            return EscapedString(raw_escape(s))
+
+blank = EscapedString("")
 
 
 class Trie:
@@ -232,7 +251,6 @@ class DAWG:
 
     @classmethod
     def serialize_regex(cls, d, level=0):
-        # pprint(d)
         if d and is_char_class(d):
             s = as_char_class(d.keys())
         elif d and all_suffixes_identical(d):
@@ -254,7 +272,7 @@ class DAWG:
             s = as_opt_charclass(d.keys())
         elif is_optional(d):
             # print('is_optional', d)
-            s = opt_group(escape(sorted(list(d.keys()))[1])) + '?'
+            s = opt_group(sorted(list(d.keys()))[1]) + '?'
             # s = as_optional_group(d.keys())
         else:
             bysuff = suffixes(d)
@@ -269,7 +287,7 @@ class DAWG:
                 # print('suffixed', suffixed)
                 s = group(suffixed)
             else:
-                grouped = [k + (cls.serialize_regex(v, level=level + 1) if v else '')
+                grouped = [escape(k) + (cls.serialize_regex(v, level=level + 1) if v else blank)
                            for k, v in sorted(d.items())]
                 # print('grouped', grouped)
                 s = group(grouped)
@@ -290,10 +308,10 @@ def is_char_class(d):
 
 
 def as_char_class(strings):
-    s = ''.join(sorted(strings))
+    s = ''.join(escape(e) for e in sorted(strings))
     if len(s) > 1:
         s = '[' + s + ']'
-    return s
+    return EscapedString(s)
 
 
 def all_suffixes_identical(d):
@@ -323,8 +341,8 @@ def as_optional_group(strings):
         return ''
     s = '|'.join(j)
     if len(j) > 1 or len(j[0]) > 1 or s.endswith('?') or '|' in s or '(' in s:
-        s = '(' + s + ')'
-    s += '?'
+        s = '(?:' + s + ')'
+    s = EscapedString('{}?'.format(s))
     return s
 
 
@@ -349,16 +367,16 @@ def condense_range(chars):
                 break
             i += 1
         if i <= 1:
-            l.append(str(chars[0]))
+            l.append(escape(str(chars[0])))
         elif i == 2:
-            l.append('{}{}'.format(chars[0], chars[1]))
+            l.append(escape('{}{}'.format(chars[0], chars[1])))
         else:
-            l.append('{}-{}'.format(chars[0], chars[i - 1]))
+            l.append(EscapedString('{}-{}'.format(escape(chars[0]), escape(chars[i - 1]))))
         if i == len(chars):
             chars = []
         else:
             del chars[:i]
-    return ''.join(l)
+    return EscapedString(''.join(l))
 
 
 def emptyish(x):
@@ -388,10 +406,10 @@ def as_charclass(l):
 def as_opt_charclass(l):
     s = condense_range(l)
     if len(l) > 2:
-        s = '[' + s + ']'
+        s = EscapedString("[{}]".format(s))
     else:
         s = escape(s)
-    s += '?'
+    s = EscapedString("{}?".format(s))
     return s
 
 
@@ -427,13 +445,13 @@ def group(strings, do_group=True):
     # print('group', strings)
     if is_optional_strings(strings):
         return as_optional_group(strings)
-    s = '|'.join(strings)
-    if do_group and (len(strings) > 1 or ('|' in s and '(' not in s)):
+    s = '|'.join(escape(e) for e in strings)
+    if do_group and (len(strings) > 1 or ('|' in s and '(' not in s)): # XXX "|" or "(" could be escaped...
         # print('group', s)
-        s = '(' + s + ')'
+        s = "(?:{})".format(s)
     # else:
     #    print('no group', strings, do_group, len(strings))
-    return s
+    return EscapedString(s)
 
 
 def longest_prefix(strings):
